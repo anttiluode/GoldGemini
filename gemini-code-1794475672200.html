@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>GN-Ghost — 16,384 Self-Writing XOR Rings</title>
+<style>
+  :root {
+    --bg: #080d16;
+    --panel: #101929;
+    --border: #263a52;
+    --ink: #e8f2ff;
+    --muted: #8ea6c0;
+    --blue: #5cc4ff;
+    --mint: #63e6be;
+    --pink: #ff6b9d;
+    --gold: #ffc078;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(circle at 20% 0%, #162a45 0%, var(--bg) 65%);
+    color: var(--ink);
+  }
+  main {
+    max-width: 1220px;
+    margin: 0 auto;
+    padding: 24px 18px 60px;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+  }
+  .eyebrow {
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--mint);
+    font-weight: 700;
+  }
+  h1 {
+    margin: 4px 0 6px;
+    font-size: clamp(1.6rem, 3.5vw, 2.5rem);
+    letter-spacing: -0.03em;
+    line-height: 1.1;
+  }
+  .subtitle {
+    margin: 0;
+    color: var(--muted);
+    max-width: 760px;
+  }
+  .badge {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #13253a;
+    border: 1px solid #38587a;
+    color: var(--mint);
+    font-variant-numeric: tabular-nums;
+  }
+  .screens {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 18px;
+  }
+  .screen-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  }
+  .screen-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 6px;
+  }
+  canvas.viewport {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #04070d;
+    border-radius: 8px;
+    border: 1px solid #1f3248;
+    image-rendering: pixelated;
+    cursor: crosshair;
+  }
+  .caption {
+    font-size: 12px;
+    color: var(--muted);
+    min-height: 36px;
+  }
+  .dashboard {
+    display: grid;
+    grid-template-columns: 1.3fr 1fr;
+    gap: 16px;
+  }
+  .box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .box h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .btn-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  button {
+    background: #192a40;
+    color: var(--ink);
+    border: 1px solid #355070;
+    border-radius: 8px;
+    padding: 7px 12px;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: 0.15s;
+  }
+  button:hover { background: #243c5a; }
+  button.active {
+    background: #174954;
+    border-color: var(--mint);
+    color: #fff;
+  }
+  button.danger {
+    background: #3d1b2c;
+    border-color: var(--pink);
+  }
+  .slider-row {
+    display: grid;
+    grid-template-columns: 170px 1fr 68px;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--mint);
+    cursor: pointer;
+  }
+  .val {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--gold);
+    font-weight: 600;
+  }
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .metric {
+    background: #0a111d;
+    border: 1px solid #1f3147;
+    border-radius: 10px;
+    padding: 10px;
+  }
+  .metric strong {
+    display: block;
+    font-size: 20px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .metric span {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  #sparkline {
+    width: 100%;
+    height: 92px;
+    background: #070c15;
+    border: 1px solid #1e3046;
+    border-radius: 8px;
+    display: block;
+  }
+  .formula {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #0a121e;
+    border-left: 3px solid var(--mint);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 12px;
+    color: #c5dcf5;
+  }
+  @media (max-width: 860px) {
+    .screens, .dashboard { grid-template-columns: 1fr; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <div class="eyebrow">Geometric Neuron Lineage · Windowed XOR-Flip Array</div>
+      <h1>GN-Ghost: Computation by Silence</h1>
+      <p class="subtitle">
+        16,384 parallel 1-wire delay rings (64×64 pixels × 4 bit-planes). No backprop, no weight updates, no separate erase gate.
+        Each ring compares its circulating memory against the world through a band-pass window: <code>r' = r ⊕ (w ⊕ r)</code>.
+      </p>
+    </div>
+    <div class="badge" id="fpsBadge">tick 0 · 16,384 rings</div>
+  </header>
+
+  <section class="screens">
+    <div class="screen-card">
+      <div class="screen-header">
+        <span><span class="dot" style="background:var(--blue)"></span>01 / WORLD INPUT (W)</span>
+        <span id="worldTag" style="color:var(--muted);font-size:12px">16-tick orbit</span>
+      </div>
+      <canvas id="cvWorld" class="viewport" width="64" height="64"></canvas>
+      <div class="caption">Drag mouse on canvas to paint unexpected light, or switch to Live Webcam below.</div>
+    </div>
+
+    <div class="screen-card">
+      <div class="screen-header">
+        <span><span class="dot" style="background:var(--mint)"></span>02 / RING MEMORY (R)</span>
+        <span id="ringTag" style="color:var(--mint);font-size:12px">Autonomous replay</span>
+      </div>
+      <canvas id="cvRing" class="viewport" width="64" height="64"></canvas>
+      <div class="caption">Circulating state inside the delay rings. Cut the World input ("Blindfold") to watch the ghost persist.</div>
+    </div>
+
+    <div class="screen-card">
+      <div class="screen-header">
+        <span><span class="dot" style="background:var(--pink)"></span>03 / SURPRISE / ERROR (E = W ⊕ R)</span>
+        <span id="errTag" style="color:var(--pink);font-size:12px">Active</span>
+      </div>
+      <canvas id="cvError" class="viewport" width="64" height="64"></canvas>
+      <div class="caption">Fires ONLY on mismatch. When the rings lock onto a static or periodic scene, this panel goes pitch black.</div>
+    </div>
+  </section>
+
+  <section class="dashboard">
+    <div class="box">
+      <h2>Scene &amp; Circuit Controls</h2>
+      <div class="btn-row" id="sceneBtns">
+        <button data-scene="orbit" class="active">Orbiting Moons (P=16)</button>
+        <button data-scene="pulse">Breathing Checker (P=16)</button>
+        <button data-scene="static">Still Geometric Moon</button>
+        <button data-scene="webcam" id="webcamBtn">Live Webcam</button>
+      </div>
+      <div class="btn-row">
+        <button id="blindfoldBtn">Blindfold World (Cut Input &amp; Freeze Ghost)</button>
+        <button id="feedbackBtn" class="active">1-Wire Error Feedback: ON</button>
+        <button id="clearRingBtn" class="danger">Wipe Ring Memory</button>
+      </div>
+
+      <div class="slider-row">
+        <label for="lapSlider">Ring Lap Period (L)</label>
+        <input type="range" id="lapSlider" min="1" max="32" step="1" value="16">
+        <span class="val" id="lapVal">16 ticks</span>
+      </div>
+      <div class="slider-row">
+        <label for="weightSlider">Junction Weight (w)</label>
+        <input type="range" id="weightSlider" min="-7.0" max="-2.0" step="0.25" value="-4.5">
+        <span class="val" id="weightVal">-4.50 (XOR)</span>
+      </div>
+      <div class="slider-row">
+        <label for="jitterSlider">World Timing Jitter</label>
+        <input type="range" id="jitterSlider" min="0" max="2" step="1" value="0">
+        <span class="val" id="jitterVal">0 ticks</span>
+      </div>
+      <div class="slider-row">
+        <label for="holdSlider">Synaptic Hold (Anti-Jitter)</label>
+        <input type="range" id="holdSlider" min="0" max="3" step="1" value="0">
+        <span class="val" id="holdVal">0 ticks</span>
+      </div>
+
+      <div class="formula">
+        Band-pass rule: fire if -14.7 &lt; w·(W + R) &lt; -6.1 (where active wire = 2.0).<br>
+        At w = -4.5: 1 input → -9.0 (FIRES) · 2 inputs → -18.0 (OVERSHOOTS TO SILENCE).
+      </div>
+    </div>
+
+    <div class="box">
+      <h2>Live Telemetry (Surprise vs. Silence)</h2>
+      <div class="metrics">
+        <div class="metric">
+          <strong id="mSurprise">0.0%</strong>
+          <span>Error Spikes</span>
+        </div>
+        <div class="metric">
+          <strong id="mEnergy">0</strong>
+          <span>Active Error Bits</span>
+        </div>
+        <div class="metric">
+          <strong id="mStored">0%</strong>
+          <span>Ring Occupancy</span>
+        </div>
+        <div class="metric">
+          <strong id="mLap">0.0</strong>
+          <span>Laps Elapsed</span>
+        </div>
+      </div>
+      <canvas id="sparkline" width="480" height="92"></canvas>
+      <div class="caption" style="margin-top:8px">
+        Pink curve: % of error neurons firing per tick. Notice how a 16-tick moving orbit causes surprise for 1 lap (16 ticks), then drops to <strong>0.0% flatline silence</strong> once the 16-slot rings predict the motion! Change L to 15 to break resonance.
+      </div>
+    </div>
+  </section>
+</main>
+
+<video id="webcamVideo" playsinline muted style="display:none"></video>
+
+<script>
+(() => {
+  "use strict";
+  const N = 64;
+  const PIXELS = N * N;
+  const PLANES = 4; // 4 bit-planes per pixel (16 gray levels) => 16,384 rings
+  const TOTAL_RINGS = PIXELS * PLANES;
+  const MAX_LAP = 64;
+
+  // DOM elements
+  const cvWorld = document.getElementById("cvWorld");
+  const cvRing  = document.getElementById("cvRing");
+  const cvError = document.getElementById("cvError");
+  const ctxW = cvWorld.getContext("2d");
+  const ctxR = cvRing.getContext("2d");
+  const ctxE = cvError.getContext("2d");
+  const imgW = ctxW.createImageData(N, N);
+  const imgR = ctxR.createImageData(N, N);
+  const imgE = ctxE.createImageData(N, N);
+
+  const spark = document.getElementById("sparkline");
+  const ctxSpark = spark.getContext("2d");
+
+  // Offscreen canvas for webcam downsampling
+  const camCanvas = document.createElement("canvas");
+  camCanvas.width = N;
+  camCanvas.height = N;
+  const ctxCam = camCanvas.getContext("2d", { willReadFrequently: true });
+  const video = document.getElementById("webcamVideo");
+
+  // Ring delay-line memory buffer: ringBuf[slot * TOTAL_RINGS + idx]
+  const ringBuf = new Uint8Array(MAX_LAP * TOTAL_RINGS);
+  // Anti-jitter synaptic hold counters for World and Ring inputs
+  const worldHold = new Uint8Array(TOTAL_RINGS);
+  const ringHold  = new Uint8Array(TOTAL_RINGS);
+
+  // State
+  let tick = 0;
+  let scene = "orbit";
+  let lapLength = 16;
+  let weight = -4.5;
+  let jitter = 0;
+  let holdTicks = 0;
+  let blindfolded = false;
+  let feedbackOn = true;
+  let pointerDown = false;
+  let pointerX = 32, pointerY = 32;
+  const paintOverlay = new Float32Array(PIXELS);
+  const errorHistory = new Float32Array(240);
+
+  // Band-pass window function from GN27 / KultaaVaiKatinkultaaOpus (WIRE = 2.0)
+  // Fires 1 iff -14.7 < drive < -6.1
+  function windowFire(drive) {
+    return (drive < -6.1 && drive > -14.7) ? 1 : 0;
+  }
+
+  // Generate 64x64 grayscale world frame (values 0..15)
+  const worldFrame = new Uint8Array(PIXELS);
+
+  function computeWorldFrame(t) {
+    if (blindfolded) {
+      worldFrame.fill(0);
+      return;
+    }
+
+    // Apply optional temporal jitter to the world's clock
+    const j = jitter > 0 ? Math.round((Math.random() * 2 - 1) * jitter) : 0;
+    const tj = t + j;
+
+    if (scene === "webcam" && video.readyState >= 2) {
+      ctxCam.drawImage(video, 0, 0, N, N);
+      const data = ctxCam.getImageData(0, 0, N, N).data;
+      for (let i = 0; i < PIXELS; i++) {
+        const r = data[i * 4], g = data[i * 4 + 1], b = data[i * 4 + 2];
+        const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        worldFrame[i] = Math.min(15, Math.max(0, Math.floor(lum * 15.99)));
+      }
+    } else if (scene === "orbit") {
+      // Period-16 orbiting moons + central ring
+      const phase = (tj % 16) / 16 * Math.PI * 2;
+      const m1x = 32 + 18 * Math.cos(phase);
+      const m1y = 32 + 18 * Math.sin(phase);
+      const m2x = 32 - 18 * Math.cos(phase);
+      const m2y = 32 - 18 * Math.sin(phase);
+
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const idx = y * N + x;
+          const dx0 = x - 32, dy0 = y - 32;
+          const r0 = Math.sqrt(dx0 * dx0 + dy0 * dy0);
+          let v = 0;
+          // Central ring
+          if (Math.abs(r0 - 8) < 2.2) v = 9;
+          // Moon 1
+          const d1 = Math.hypot(x - m1x, y - m1y);
+          if (d1 < 6.0) v = Math.max(v, Math.floor(15 * (1 - d1 / 6.5)));
+          // Moon 2
+          const d2 = Math.hypot(x - m2x, y - m2y);
+          if (d2 < 4.5) v = Math.max(v, Math.floor(12 * (1 - d2 / 5.0)));
+          worldFrame[idx] = v;
+        }
+      }
+    } else if (scene === "pulse") {
+      // Period-16 breathing polar checkerboard
+      const s = Math.sin((tj % 16) / 16 * Math.PI * 2);
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const dx = x - 32, dy = y - 32;
+          const r = Math.hypot(dx, dy);
+          const ang = Math.atan2(dy, dx);
+          const cell = Math.sin(r * 0.45 - phaseShift(tj)) * Math.cos(ang * 4);
+          const val = (cell * s > 0.1) ? Math.floor(10 + 5 * Math.abs(s)) : 0;
+          worldFrame[y * N + x] = r < 29 ? val : 0;
+        }
+      }
+    } else {
+      // Still Geometric Moon crescent
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const d1 = Math.hypot(x - 30, y - 32);
+          const d2 = Math.hypot(x - 37, y - 29);
+          let v = 0;
+          if (d1 < 20 && d2 > 15) {
+            v = Math.min(15, Math.floor(15 * (1 - d1 / 24)));
+          }
+          worldFrame[y * N + x] = v;
+        }
+      }
+    }
+
+    // Add interactive user mouse brush overlay
+    for (let i = 0; i < PIXELS; i++) {
+      if (paintOverlay[i] > 0.05) {
+        worldFrame[i] = Math.min(15, worldFrame[i] + Math.floor(paintOverlay[i] * 15));
+        paintOverlay[i] *= 0.88; // fade brush stroke
+      } else {
+        paintOverlay[i] = 0;
+      }
+    }
+  }
+
+  function phaseShift(t) {
+    return (t % 16) / 16 * Math.PI * 2;
+  }
+
+  function stepSimulation() {
+    computeWorldFrame(tick);
+
+    const slot = tick % lapLength;
+    const baseOffset = slot * TOTAL_RINGS;
+
+    let errorBits = 0;
+    let storedBits = 0;
+
+    for (let p = 0; p < PIXELS; p++) {
+      const wVal = worldFrame[p];
+      let rVal = 0;
+      let eVal = 0;
+
+      for (let b = 0; b < PLANES; b++) {
+        const idx = (p << 2) + b;
+        const wBit = (wVal >> b) & 1;
+        const rBit = ringBuf[baseOffset + idx];
+
+        // Optional synaptic hold (low-pass pulse widening against timing jitter)
+        if (wBit) worldHold[idx] = holdTicks + 1;
+        else if (worldHold[idx] > 0) worldHold[idx]--;
+
+        if (rBit) ringHold[idx] = holdTicks + 1;
+        else if (ringHold[idx] > 0) ringHold[idx]--;
+
+        const wEff = worldHold[idx] > 0 ? 1 : 0;
+        const rEff = ringHold[idx] > 0 ? 1 : 0;
+
+        // 1. Error Receiver: receives World (wEff) and Ring (rEff) with weight `w`
+        // When blindfolded, World is disconnected from the Error unit so the ring
+        // circulates untouched without self-erasing.
+        let eBit = 0;
+        if (!blindfolded) {
+          const errDrive = (wEff * 2.0 * weight) + (rEff * 2.0 * weight);
+          eBit = windowFire(errDrive);
+        }
+
+        // 2. Ring Junction: receives circulating Ring bit (w = -6.0) + Error bit (w = -4.5)
+        // If rBit=0, eBit=1 -> drive = -9.0 (inside window -> writes 1)
+        // If rBit=1, eBit=0 -> drive = -12.0 (inside window -> sustains 1)
+        // If rBit=1, eBit=1 -> drive = -21.0 (overshoots window -> erases to 0!)
+        const fbBit = feedbackOn ? eBit : 0;
+        const ringDrive = (rBit * 2.0 * -6.0) + (fbBit * 2.0 * -4.5);
+        const nextRBit = windowFire(ringDrive);
+
+        ringBuf[baseOffset + idx] = nextRBit;
+
+        rVal |= (rBit << b);
+        eVal |= (eBit << b);
+        errorBits += eBit;
+        storedBits += nextRBit;
+      }
+
+      // Write RGBA pixels
+      const c4 = p * 4;
+      // World (Cyan/Blue tint)
+      const w8 = wVal * 17;
+      imgW.data[c4]     = w8 * 0.45;
+      imgW.data[c4 + 1] = w8 * 0.85;
+      imgW.data[c4 + 2] = w8;
+      imgW.data[c4 + 3] = 255;
+
+      // Ring Memory (Mint/Emerald tint)
+      const r8 = rVal * 17;
+      imgR.data[c4]     = r8 * 0.4;
+      imgR.data[c4 + 1] = r8;
+      imgR.data[c4 + 2] = r8 * 0.78;
+      imgR.data[c4 + 3] = 255;
+
+      // Error / Surprise (Neon Pink/Gold)
+      const e8 = eVal * 17;
+      imgE.data[c4]     = e8;
+      imgE.data[c4 + 1] = e8 * 0.32;
+      imgE.data[c4 + 2] = e8 * 0.65;
+      imgE.data[c4 + 3] = 255;
+    }
+
+    ctxW.putImageData(imgW, 0, 0);
+    ctxR.putImageData(imgR, 0, 0);
+    ctxE.putImageData(imgE, 0, 0);
+
+    // Update Telemetry
+    const errPct = (errorBits / TOTAL_RINGS) * 100;
+    const occPct = (storedBits / TOTAL_RINGS) * 100;
+    errorHistory.copyWithin(0, 1);
+    errorHistory[errorHistory.length - 1] = errPct;
+
+    document.getElementById("mSurprise").textContent = errPct.toFixed(1) + "%";
+    document.getElementById("mEnergy").textContent = errorBits.toLocaleString();
+    document.getElementById("mStored").textContent = occPct.toFixed(0) + "%";
+    document.getElementById("mLap").textContent = (tick / lapLength).toFixed(1);
+    document.getElementById("fpsBadge").textContent = `tick ${tick} · 16,384 rings`;
+    document.getElementById("errTag").textContent = errorBits === 0 ? "SILENT (LOCKED)" : `${errorBits} spikes`;
+    document.getElementById("errTag").style.color = errorBits === 0 ? "var(--mint)" : "var(--pink)";
+
+    drawSparkline();
+    tick++;
+  }
+
+  function drawSparkline() {
+    const w = spark.width, h = spark.height;
+    ctxSpark.clearRect(0, 0, w, h);
+    ctxSpark.strokeStyle = "#1c2d42";
+    ctxSpark.lineWidth = 1;
+    ctxSpark.beginPath();
+    ctxSpark.moveTo(0, h - 18);
+    ctxSpark.lineTo(w, h - 18);
+    ctxSpark.stroke();
+
+    ctxSpark.strokeStyle = "#ff6b9d";
+    ctxSpark.lineWidth = 2;
+    ctxSpark.beginPath();
+    for (let i = 0; i < errorHistory.length; i++) {
+      const x = (i / (errorHistory.length - 1)) * w;
+      const y = (h - 18) - Math.min(1, errorHistory[i] / 50) * (h - 26);
+      if (i === 0) ctxSpark.moveTo(x, y);
+      else ctxSpark.lineTo(x, y);
+    }
+    ctxSpark.stroke();
+  }
+
+  // Interactive painting on canvases
+  function paintAt(e, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor(((e.clientX - rect.left) / rect.width) * N);
+    const y = Math.floor(((e.clientY - rect.top) / rect.height) * N);
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx >= 0 && nx < N && ny >= 0 && ny < N) {
+          const d = Math.hypot(dx, dy);
+          if (d <= 4.2) paintOverlay[ny * N + nx] = 1.0;
+        }
+      }
+    }
+  }
+
+  [cvWorld, cvRing, cvError].forEach(cv => {
+    cv.addEventListener("pointerdown", e => { pointerDown = true; paintAt(e, cv); });
+    cv.addEventListener("pointermove", e => { if (pointerDown) paintAt(e, cv); });
+  });
+  window.addEventListener("pointerup", () => { pointerDown = false; });
+
+  // UI Controls
+  document.getElementById("sceneBtns").querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const target = btn.dataset.scene;
+      if (target === "webcam") {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 128, height: 128 } });
+          video.srcObject = stream;
+          await video.play();
+        } catch (err) {
+          alert("Webcam access denied or unavailable.");
+          return;
+        }
+      }
+      scene = target;
+      document.getElementById("sceneBtns").querySelectorAll("button").forEach(b => b.classList.toggle("active", b === btn));
+    });
+  });
+
+  const blindfoldBtn = document.getElementById("blindfoldBtn");
+  blindfoldBtn.addEventListener("click", () => {
+    blindfolded = !blindfolded;
+    blindfoldBtn.classList.toggle("active", blindfolded);
+    blindfoldBtn.textContent = blindfolded
+      ? "Blindfold ON (World Cut — Ring Replaying Ghost)"
+      : "Blindfold World (Cut Input & Freeze Ghost)";
+  });
+
+  const feedbackBtn = document.getElementById("feedbackBtn");
+  feedbackBtn.addEventListener("click", () => {
+    feedbackOn = !feedbackOn;
+    feedbackBtn.classList.toggle("active", feedbackOn);
+    feedbackBtn.textContent = feedbackOn ? "1-Wire Error Feedback: ON" : "1-Wire Error Feedback: OFF";
+  });
+
+  document.getElementById("clearRingBtn").addEventListener("click", () => {
+    ringBuf.fill(0);
+    worldHold.fill(0);
+    ringHold.fill(0);
+  });
+
+  const lapSlider = document.getElementById("lapSlider");
+  lapSlider.addEventListener("input", () => {
+    lapLength = +lapSlider.value;
+    document.getElementById("lapVal").textContent = lapLength + (lapLength === 1 ? " tick" : " ticks");
+  });
+
+  const weightSlider = document.getElementById("weightSlider");
+  weightSlider.addEventListener("input", () => {
+    weight = +weightSlider.value;
+    const mode = (weight <= -4.1 && weight >= -6.5) ? " (XOR)" : (weight <= -2.0 && weight >= -3.5) ? " (AND)" : "";
+    document.getElementById("weightVal").textContent = weight.toFixed(2) + mode;
+  });
+
+  const jitterSlider = document.getElementById("jitterSlider");
+  jitterSlider.addEventListener("input", () => {
+    jitter = +jitterSlider.value;
+    document.getElementById("jitterVal").textContent = "±" + jitter + " ticks";
+  });
+
+  const holdSlider = document.getElementById("holdSlider");
+  holdSlider.addEventListener("input", () => {
+    holdTicks = +holdSlider.value;
+    document.getElementById("holdVal").textContent = holdTicks + " ticks";
+  });
+
+  setInterval(stepSimulation, 45);
+})();
+</script>
+</body>
+</html>

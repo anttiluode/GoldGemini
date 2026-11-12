@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GN-Ghost: 16,384 Self-Writing XOR Rings</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #07090e;
+      color: #e2e8f0;
+      overflow-x: hidden;
+    }
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .pixelated {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    /* Custom Subtle Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    input[type="range"] {
+      accent-color: #ec4899;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between p-3 sm:p-5 select-none">
+
+  <!-- TOP HEADER & LIVE TELEMETRY -->
+  <header class="max-w-7xl w-full mx-auto bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+    <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      <div>
+        <div class="flex items-center gap-2.5">
+          <span class="inline-block w-3 h-3 rounded-full bg-pink-500 animate-pulse shadow-[0_0_12px_#ec4899]"></span>
+          <span class="mono text-xs uppercase tracking-widest text-pink-400 font-semibold">Windowed XOR-Flip Delay Ring Array</span>
+        </div>
+        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white mt-0.5">
+          GN-Ghost: <span class="text-emerald-400">16,384</span> Self-Writing XOR Rings
+        </h1>
+        <p class="text-xs sm:text-sm text-slate-400 mt-0.5">
+          64×64 Pixels × 4 Bit-Planes · Single-Wire Update: <span class="mono text-slate-200 bg-slate-800/90 px-1.5 py-0.5 rounded">E = W ⊕ R</span> and <span class="mono text-slate-200 bg-slate-800/90 px-1.5 py-0.5 rounded">R' = R ⊕ E</span> via Non-Monotonic Band <span class="mono text-pink-300">(-14.7 &lt; drive &lt; -6.1)</span>
+        </p>
+      </div>
+
+      <!-- KPI Pills -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div class="bg-slate-950/90 border border-slate-800/80 rounded-xl px-3.5 py-2">
+          <div class="text-[10px] mono uppercase tracking-wider text-slate-400">Surprise (E = W ⊕ R)</div>
+          <div id="kpiErrorPct" class="text-lg sm:text-xl font-bold mono text-pink-400 mt-0.5">0.0%</div>
+          <div id="kpiErrorBits" class="text-[11px] mono text-slate-500">0 / 16384 bits</div>
+        </div>
+        <div class="bg-slate-950/90 border border-slate-800/80 rounded-xl px-3.5 py-2">
+          <div class="text-[10px] mono uppercase tracking-wider text-slate-400">Ring Occupancy</div>
+          <div id="kpiRingPct" class="text-lg sm:text-xl font-bold mono text-emerald-400 mt-0.5">0.0%</div>
+          <div id="kpiRingBits" class="text-[11px] mono text-slate-500">0 active beats</div>
+        </div>
+        <div class="bg-slate-950/90 border border-slate-800/80 rounded-xl px-3.5 py-2">
+          <div class="text-[10px] mono uppercase tracking-wider text-slate-400">Laps &amp; Phase</div>
+          <div id="kpiLaps" class="text-lg sm:text-xl font-bold mono text-cyan-400 mt-0.5">Lap 0</div>
+          <div id="kpiPhase" class="text-[11px] mono text-slate-500">Slot 0 / 16</div>
+        </div>
+        <div class="bg-slate-950/90 border border-slate-800/80 rounded-xl px-3.5 py-2">
+          <div class="text-[10px] mono uppercase tracking-wider text-slate-400">Equilibrium Status</div>
+          <div id="kpiStatus" class="text-sm sm:text-base font-bold mono text-amber-400 mt-1">LEARNING...</div>
+          <div id="kpiGateMode" class="text-[11px] mono text-slate-500">Gate: XOR (-4.5)</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <main class="max-w-7xl w-full mx-auto my-4 flex-1 flex flex-col gap-4">
+
+    <!-- THREE 64x64 NEUROMORPHIC CANVASES -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      
+      <!-- PANEL 1: WORLD INPUT (W) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col shadow-xl relative overflow-hidden">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <span class="text-[11px] mono uppercase tracking-wider text-cyan-400 font-semibold block">Panel 1 · Sensory Stream</span>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              WORLD INPUT (W)
+              <span id="blindfoldBadge" class="hidden text-[10px] mono bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded-full">BLINDFOLDED</span>
+            </h2>
+          </div>
+          <span class="text-xs mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">Draw w/ Mouse</span>
+        </div>
+
+        <div class="relative w-full aspect-square bg-slate-950 rounded-xl overflow-hidden border border-cyan-500/30 shadow-inner group">
+          <canvas id="canvasWorld" width="64" height="64" class="w-full h-full pixelated cursor-crosshair touch-none"></canvas>
+          <div id="blindfoldOverlay" class="hidden absolute inset-0 bg-slate-950/85 backdrop-blur-[2px] flex flex-col items-center justify-center p-4 text-center pointer-events-none">
+            <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 mb-2 mono font-bold">Ø</div>
+            <p class="text-sm font-bold text-amber-300">WORLD DISCONNECTED</p>
+            <p class="text-xs text-slate-400 mt-1">1-Wire feedback muted. Watch Panel 2 replay the trapped 16-tick ghost autonomously.</p>
+          </div>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <span>4-Bit Luminance Quantizer</span>
+          <button id="btnClearPaint" class="text-cyan-400 hover:text-cyan-300 mono underline text-[11px]">Clear Drawn Ink</button>
+        </div>
+      </div>
+
+      <!-- PANEL 2: RING MEMORY (R) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col shadow-xl">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <span class="text-[11px] mono uppercase tracking-wider text-emerald-400 font-semibold block">Panel 2 · Circulating Delay State</span>
+            <h2 class="text-base font-bold text-white">RING MEMORY (R)</h2>
+          </div>
+          <span id="ringLenBadge" class="text-xs mono text-emerald-300 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-700/40">L = 16 Ticks</span>
+        </div>
+
+        <div class="relative w-full aspect-square bg-slate-950 rounded-xl overflow-hidden border border-emerald-500/30 shadow-inner">
+          <canvas id="canvasRing" width="64" height="64" class="w-full h-full pixelated"></canvas>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <span class="mono text-[11px]">drive = -12·R + -9·E</span>
+          <span class="text-emerald-400 mono text-[11px]" id="ringModeLabel">Self-Writing &amp; Self-Erasing</span>
+        </div>
+      </div>
+
+      <!-- PANEL 3: SURPRISE / ERROR (E = W XOR R) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col shadow-xl">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <span class="text-[11px] mono uppercase tracking-wider text-pink-400 font-semibold block">Panel 3 · Discrepancy Spikes</span>
+            <h2 class="text-base font-bold text-white">SURPRISE (E = W ⊕ R)</h2>
+          </div>
+          <span id="silenceBadge" class="text-xs mono text-pink-300 bg-pink-950/60 px-2.5 py-1 rounded-lg border border-pink-700/40">ACTIVE SPIKES</span>
+        </div>
+
+        <div class="relative w-full aspect-square bg-slate-950 rounded-xl overflow-hidden border border-pink-500/30 shadow-inner">
+          <canvas id="canvasError" width="64" height="64" class="w-full h-full pixelated"></canvas>
+        </div>
+
+        <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+          <span class="mono text-[11px]" id="errorEquationLabel">drive = -9·W + -9·R</span>
+          <span class="text-pink-400 mono text-[11px]">Pitch Black = Locked</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- CONTROLS, SPARKLINE & PHYSICS INSPECTOR -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+      <!-- LEFT 8 COLS: INTERACTIVE CONTROLS -->
+      <div class="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between gap-4">
+        
+        <!-- Row 1: Scene Presets & Primary Action Toggles -->
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs mono uppercase text-slate-400 mr-1">Scene:</span>
+            <button data-scene="orbit" class="scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 transition">
+              16-Tick Orbiting Moons
+            </button>
+            <button data-scene="checker" class="scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+              16-Tick Breathing Grid
+            </button>
+            <button data-scene="moon" class="scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+              Still Hand-Written Moon
+            </button>
+            <button data-scene="webcam" id="btnWebcam" class="scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-rose-500"></span> Live Webcam
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="btnBlindfold" class="px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition">
+              Blindfold World: OFF
+            </button>
+            <button id="btnFeedback" class="px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition">
+              1-Wire Feedback: ON
+            </button>
+            <button id="btnWipeRing" class="px-3 py-1.5 rounded-xl text-xs font-semibold mono bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25 transition">
+              Wipe Ring
+            </button>
+          </div>
+        </div>
+
+        <!-- Row 2: Four Neuromorphic Sliders -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          
+          <!-- Slider 1: Ring Lap Period L -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3">
+            <div class="flex justify-between items-center text-xs mb-1">
+              <span class="font-semibold text-slate-200">Ring Delay Period (<span class="mono text-emerald-400">L</span>)</span>
+              <span id="valPeriod" class="mono font-bold text-emerald-400">16 ticks (Matches Orbit)</span>
+            </div>
+            <input id="sliderPeriod" type="range" min="1" max="32" step="1" value="16" class="w-full cursor-pointer" />
+            <div class="flex justify-between text-[10px] mono text-slate-500 mt-1">
+              <span>1 (Static Only)</span>
+              <span>8 (Half-Harmonic)</span>
+              <span>16 (Resonant Lock)</span>
+              <span>32 (2× Lap)</span>
+            </div>
+          </div>
+
+          <!-- Slider 2: Junction Weight w -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3">
+            <div class="flex justify-between items-center text-xs mb-1">
+              <span class="font-semibold text-slate-200">Error Receiver Weight (<span class="mono text-pink-400">w</span>)</span>
+              <span id="valWeight" class="mono font-bold text-pink-400">w = -4.50 (XOR)</span>
+            </div>
+            <input id="sliderWeight" type="range" min="-7.0" max="-2.0" step="0.25" value="-4.5" class="w-full cursor-pointer" />
+            <div class="flex justify-between text-[10px] mono text-slate-500 mt-1">
+              <span>-7.0</span>
+              <span>-4.5 (XOR Discrepancy)</span>
+              <span>-2.5 (AND Coincidence)</span>
+            </div>
+          </div>
+
+          <!-- Slider 3: World Timing Jitter -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3">
+            <div class="flex justify-between items-center text-xs mb-1">
+              <span class="font-semibold text-slate-200">World Timing Jitter (<span class="mono text-amber-400">±Δt</span>)</span>
+              <span id="valJitter" class="mono font-bold text-amber-400">0 ticks (Clean Clock)</span>
+            </div>
+            <input id="sliderJitter" type="range" min="0" max="2" step="1" value="0" class="w-full cursor-pointer" />
+            <div class="flex justify-between text-[10px] mono text-slate-500 mt-1">
+              <span>0 (Exact Phase)</span>
+              <span>±1 Tick (Breaks Bare Ring)</span>
+              <span>±2 Ticks</span>
+            </div>
+          </div>
+
+          <!-- Slider 4: Synaptic Hold / Persistence (Jitter Filter) -->
+          <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3">
+            <div class="flex justify-between items-center text-xs mb-1">
+              <span class="font-semibold text-slate-200">Anti-Jitter Synaptic Hold (<span class="mono text-cyan-400">τ</span>)</span>
+              <span id="valHold" class="mono font-bold text-cyan-400">0 ticks (Bare Window)</span>
+            </div>
+            <input id="sliderHold" type="range" min="0" max="3" step="1" value="0" class="w-full cursor-pointer" />
+            <div class="flex justify-between text-[10px] mono text-slate-500 mt-1">
+              <span>0 (Instant)</span>
+              <span>1 Tick Hold</span>
+              <span>2 Ticks (Absorbs ±1 Jitter)</span>
+              <span>3 Ticks</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Row 3: Live Surprise Sparkline -->
+        <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+          <div class="flex items-center justify-between mb-1.5">
+            <span class="text-[11px] mono uppercase tracking-wider text-slate-400">
+              Surprise History (% Active Error Spikes Across 16,384 Rings · Last 180 Ticks)
+            </span>
+            <div class="flex items-center gap-3">
+              <button id="btnInjectNoise" class="text-[11px] mono px-2.5 py-0.5 rounded bg-pink-500/20 text-pink-300 border border-pink-500/30 hover:bg-pink-500/30 transition">
+                ⚡ Perturb World
+              </button>
+              <button id="btnPause" class="text-[11px] mono px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition">
+                Pause
+              </button>
+            </div>
+          </div>
+          <canvas id="canvasSparkline" width="600" height="64" class="w-full h-14 rounded bg-slate-900/70"></canvas>
+        </div>
+
+      </div>
+
+      <!-- RIGHT 4 COLS: EXACT V27 BAND-PASS TRUTH TABLE & PHYSICS -->
+      <div class="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl flex flex-col justify-between">
+        <div>
+          <span class="text-[11px] mono uppercase tracking-wider text-emerald-400 font-semibold">Exact Window Physics (window.py)</span>
+          <h3 class="text-base font-bold text-white mt-0.5">Why 1 Wire Can Both Write &amp; Erase</h3>
+          <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+            Each neuron fires a <span class="mono text-slate-200">WIRE = 2.0</span> beat iff its input drive lands inside the non-monotonic window <span class="mono text-pink-300">(-14.7, -6.1)</span>.
+          </p>
+
+          <!-- Truth Table for 1-Wire Ring Node -->
+          <div class="mt-3 overflow-hidden rounded-xl border border-slate-800 bg-slate-950/80">
+            <table class="w-full text-left border-collapse">
+              <thead>
+                <tr class="border-b border-slate-800 text-[10px] mono uppercase text-slate-400 bg-slate-900/70">
+                  <th class="py-2 px-2.5">State (W, R)</th>
+                  <th class="py-2 px-2">Error E</th>
+                  <th class="py-2 px-2">Ring Drive</th>
+                  <th class="py-2 px-2.5">Next R'</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/70 text-xs mono">
+                <tr>
+                  <td class="py-2 px-2.5 text-slate-400">W=0, R=0</td>
+                  <td class="py-2 px-2 text-slate-500">0 (0.0)</td>
+                  <td class="py-2 px-2 text-slate-500">0.0</td>
+                  <td class="py-2 px-2.5 text-slate-400">0 (Quiet)</td>
+                </tr>
+                <tr class="bg-emerald-950/20">
+                  <td class="py-2 px-2.5 text-cyan-300">W=1, R=0</td>
+                  <td class="py-2 px-2 text-pink-400 font-bold">1 (-9.0)</td>
+                  <td class="py-2 px-2 text-emerald-300 font-bold">-9.0 ∈ Band</td>
+                  <td class="py-2 px-2.5 text-emerald-400 font-bold">1 (WRITE)</td>
+                </tr>
+                <tr>
+                  <td class="py-2 px-2.5 text-emerald-300">W=1, R=1</td>
+                  <td class="py-2 px-2 text-slate-500">0 (-18.0)</td>
+                  <td class="py-2 px-2 text-emerald-300">-12.0 ∈ Band</td>
+                  <td class="py-2 px-2.5 text-emerald-400">1 (KEEP)</td>
+                </tr>
+                <tr class="bg-pink-950/25">
+                  <td class="py-2 px-2.5 text-amber-300">W=0, R=1</td>
+                  <td class="py-2 px-2 text-pink-400 font-bold">1 (-9.0)</td>
+                  <td class="py-2 px-2 text-pink-400 font-bold">-21.0 (Over!)</td>
+                  <td class="py-2 px-2.5 text-rose-400 font-bold">0 (ERASE)</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Band-Pass Visual Bar -->
+        <div class="mt-4 bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+          <div class="text-[10px] mono uppercase text-slate-400 mb-1.5 flex justify-between">
+            <span>Drive Axis (setpoint_mod)</span>
+            <span class="text-emerald-400">Active Window: -14.7 to -6.1</span>
+          </div>
+          <div class="relative h-6 w-full bg-slate-900 rounded-lg overflow-hidden border border-slate-800 flex text-[10px] mono font-semibold">
+            <div class="w-[38%] bg-rose-950/70 text-rose-300 flex items-center justify-center border-r border-rose-500/40" title="Overshoot Silence (&lt; -14.7)">
+              -21 ERASE
+            </div>
+            <div class="w-[38%] bg-emerald-500/25 text-emerald-300 flex items-center justify-around border-r border-emerald-500/40">
+              <span>-12 KEEP</span>
+              <span>-9 WRITE</span>
+            </div>
+            <div class="w-[24%] bg-slate-900 text-slate-500 flex items-center justify-center">
+              0 QUIET
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-400 mt-2 leading-snug">
+            <strong class="text-white">Try this:</strong> Wait 1 lap for Panel 3 to turn <strong class="text-pink-400">pitch black</strong>. Then click <strong class="text-amber-300">Blindfold World</strong>—Panel 2 keeps orbiting on its own! Or change <strong class="text-emerald-400">Period L</strong> to 11 to watch comb-filter resonance mismatch.
+          </p>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Hidden video element for optional webcam capture -->
+  <video id="webcamVideo" autoplay playsinline muted class="hidden"></video>
+
+  <script>
+    /********************************************************************
+     * GN-GHOST: 16,384 SELF-WRITING XOR RINGS
+     * Exact Windowed Delay-Ring Physics from GN-XOR & KultaaVaiKatinkultaaOpus
+     ********************************************************************/
+    const N = 64;                      // 64x64 spatial grid
+    const PIXELS = N * N;              // 4,096 pixels
+    const PLANES = 4;                  // 4 binary bit-planes per pixel (16 grayscale levels)
+    const TOTAL_RINGS = PIXELS * PLANES; // 16,384 parallel 1-wire XOR rings
+    const MAX_L = 32;                  // Max ring delay period in ticks
+
+    // Exact V27 / window.py constants
+    const WIRE_VAL = 2.0;
+    const BAND_LOW = -14.7;
+    const BAND_HIGH = -6.1;
+    const W_RING_SELF = -6.0;          // Ring relay weight (-6.0 * 2.0 = -12.0 inside band)
+    const W_ERR_TO_RING = -4.5;        // Single-wire feedback weight (-4.5 * 2.0 = -9.0 inside band; -12 + -9 = -21 overshoot erase!)
+
+    // Exact non-monotonic window transfer function
+    function windowFire(drive) {
+      return (drive > BAND_LOW && drive < BAND_HIGH) ? 1 : 0;
+    }
+
+    // Ring memory buffer: [MAX_L][TOTAL_RINGS]
+    const ringBuffer = new Array(MAX_L);
+    for (let s = 0; s < MAX_L; s++) {
+      ringBuffer[s] = new Uint8Array(TOTAL_RINGS);
+    }
+
+    // Current state buffers for display & synaptic hold
+    const currentW = new Uint8Array(TOTAL_RINGS);
+    const currentR = new Uint8Array(TOTAL_RINGS);
+    const currentE = new Uint8Array(TOTAL_RINGS);
+    const holdTimers = new Uint8Array(TOTAL_RINGS); // For anti-jitter synaptic persistence
+
+    // User interactive paint layer (4-bit values 0..15)
+    const userPaint = new Uint8Array(PIXELS);
+
+    // Simulation state
+    let tickCount = 0;
+    let ringHead = 0;
+    let ringPeriod = 16;
+    let errorWeight = -4.5;
+    let timingJitter = 0;
+    let synapticHold = 0;
+    let blindfoldWorld = false;
+    let feedbackEnabled = true;
+    let isPaused = false;
+    let activeScene = 'orbit';
+    let webcamActive = false;
+
+    // Sparkline history (last 180 ticks of error percentage)
+    const SPARK_LEN = 180;
+    const errorHistory = new Float32Array(SPARK_LEN);
+    let sparkIdx = 0;
+
+    // DOM Elements
+    const canvasWorld = document.getElementById('canvasWorld');
+    const ctxWorld = canvasWorld.getContext('2d');
+    const canvasRing = document.getElementById('canvasRing');
+    const ctxRing = canvasRing.getContext('2d');
+    const canvasError = document.getElementById('canvasError');
+    const ctxError = canvasError.getContext('2d');
+    const canvasSpark = document.getElementById('canvasSparkline');
+    const ctxSpark = canvasSpark.getContext('2d');
+
+    const imgWorld = ctxWorld.createImageData(N, N);
+    const imgRing = ctxRing.createImageData(N, N);
+    const imgError = ctxError.createImageData(N, N);
+
+    // Offscreen canvas for sampling webcam
+    const offCamCanvas = document.createElement('canvas');
+    offCamCanvas.width = N;
+    offCamCanvas.height = N;
+    const offCamCtx = offCamCanvas.getContext('2d', { willReadFrequently: true });
+    const webcamVideo = document.getElementById('webcamVideo');
+
+    /********************************************************************
+     * SYNTHETIC & LIVE WORLD GENERATORS (Period = 16 Ticks)
+     ********************************************************************/
+    function generateWorldFrame(effectiveTick) {
+      const phase = ((effectiveTick % 16) + 16) % 16;
+      const angle = (phase / 16) * Math.PI * 2;
+
+      let camData = null;
+      if (activeScene === 'webcam' && webcamActive && webcamVideo.readyState >= 2) {
+        offCamCtx.drawImage(webcamVideo, 0, 0, N, N);
+        camData = offCamCtx.getImageData(0, 0, N, N).data;
+      }
+
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const idx = y * N + x;
+          let level4bit = 0; // 0..15
+
+          if (activeScene === 'orbit') {
+            // Two orbiting moons + pulsing central ring + corner beacons
+            const cx1 = 32 + Math.cos(angle) * 18;
+            const cy1 = 32 + Math.sin(angle) * 18;
+            const d1 = Math.hypot(x - cx1, y - cy1);
+
+            const cx2 = 32 - Math.cos(angle) * 18;
+            const cy2 = 32 - Math.sin(angle) * 18;
+            const d2 = Math.hypot(x - cx2, y - cy2);
+
+            const dCenter = Math.hypot(x - 32, y - 32);
+
+            if (d1 < 6.2) {
+              level4bit = 15 - Math.floor((d1 / 6.2) * 8);
+            } else if (d2 < 4.5) {
+              level4bit = 12 - Math.floor((d2 / 4.5) * 6);
+            } else if (Math.abs(dCenter - 9.0) < 1.3) {
+              level4bit = ((phase % 4) < 2) ? 10 : 4;
+            } else if (Math.abs(dCenter - 18.0) < 0.7 && ((x + y) % 2 === 0)) {
+              level4bit = 3;
+            }
+          } else if (activeScene === 'checker') {
+            // 16-tick breathing polar checkerboard
+            const dx = x - 32;
+            const dy = y - 32;
+            const r = Math.hypot(dx, dy);
+            const theta = Math.atan2(dy, dx) + angle;
+            const sector = Math.floor(((theta + Math.PI * 4) / (Math.PI / 4))) % 2;
+            const ringBand = Math.floor((r + (phase * 0.5)) / 6) % 2;
+            if (r < 29) {
+              level4bit = (sector ^ ringBand) ? 13 : 2;
+            }
+          } else if (activeScene === 'moon') {
+            // Still Hand-Written Moon crescent & craters
+            const dx = x - 32;
+            const dy = y - 32;
+            const r = Math.hypot(dx, dy);
+            const rShadow = Math.hypot(dx - 8, dy + 4);
+            if (r < 22 && rShadow > 16) {
+              level4bit = 14 - Math.floor((r / 22) * 5);
+              const c1 = Math.hypot(x - 22, y - 28);
+              const c2 = Math.hypot(x - 26, y - 40);
+              if (c1 < 3.5 || c2 < 2.8) level4bit = 5;
+            } else if (((x * 73 + y * 37) % 97 === 0) && r > 25) {
+              level4bit = 9; // Background stars
+            }
+          } else if (activeScene === 'webcam' && camData) {
+            const p = idx * 4;
+            const luma = 0.299 * camData[p] + 0.587 * camData[p + 1] + 0.114 * camData[p + 2];
+            level4bit = Math.min(15, Math.max(0, Math.floor(luma / 16)));
+          }
+
+          // Overlay user's hand-drawn ink
+          if (userPaint[idx] > 0) {
+            level4bit = userPaint[idx];
+          }
+
+          // Decompose 4-bit grayscale level (0..15) into 4 binary bit-planes
+          const baseRingIdx = idx * PLANES;
+          if (blindfoldWorld) {
+            currentW[baseRingIdx]     = 0;
+            currentW[baseRingIdx + 1] = 0;
+            currentW[baseRingIdx + 2] = 0;
+            currentW[baseRingIdx + 3] = 0;
+          } else {
+            currentW[baseRingIdx]     = (level4bit & 1) ? 1 : 0;
+            currentW[baseRingIdx + 1] = (level4bit & 2) ? 1 : 0;
+            currentW[baseRingIdx + 2] = (level4bit & 4) ? 1 : 0;
+            currentW[baseRingIdx + 3] = (level4bit & 8) ? 1 : 0;
+          }
+        }
+      }
+    }
+
+    /********************************************************************
+     * CORE STEP: 16,384 PARALLEL WINDOWED XOR-FLIP DELAY RINGS
+     ********************************************************************/
+    function stepSimulation() {
+      // Optional world timing jitter (±Δt)
+      let jitterOffset = 0;
+      if (timingJitter > 0) {
+        jitterOffset = Math.floor(Math.random() * (2 * timingJitter + 1)) - timingJitter;
+      }
+      generateWorldFrame(tickCount + jitterOffset);
+
+      const slotRing = ringBuffer[ringHead];
+      let activeErrorBits = 0;
+      let activeRingBits = 0;
+
+      for (let i = 0; i < TOTAL_RINGS; i++) {
+        const rawW = currentW[i];
+
+        // Optional anti-jitter synaptic hold (stretches input pulse by τ ticks)
+        let effW = rawW;
+        if (synapticHold > 0) {
+          if (rawW === 1) {
+            holdTimers[i] = synapticHold + 1;
+          }
+          if (holdTimers[i] > 0) {
+            effW = 1;
+            holdTimers[i]--;
+          }
+        }
+
+        const rBit = slotRing[i];
+        currentR[i] = rBit;
+        if (rBit === 1) activeRingBits++;
+
+        // 1. Error Receiver Neuron: drive = w * WIRE * W + w * WIRE * R
+        const errDrive = (errorWeight * WIRE_VAL * effW) + (errorWeight * WIRE_VAL * rBit);
+        const eBit = windowFire(errDrive);
+        currentE[i] = eBit;
+        if (eBit === 1) activeErrorBits++;
+
+        // 2. 1-Wire Self-Writing & Self-Erasing Ring Update:
+        // When Blindfolded or Feedback OFF, error wire is disconnected (effE = 0),
+        // so the ring circulates autonomously: drive = -6.0 * 2.0 * rBit = -12.0 (inside window!).
+        const effE = (feedbackEnabled && !blindfoldWorld) ? eBit : 0;
+        const ringDrive = (W_RING_SELF * WIRE_VAL * rBit) + (W_ERR_TO_RING * WIRE_VAL * effE);
+        const nextR = windowFire(ringDrive);
+
+        slotRing[i] = nextR;
+      }
+
+      // Advance ring head & tick counter
+      ringHead = (ringHead + 1) % ringPeriod;
+      tickCount++;
+
+      // Record telemetry
+      const errPct = (activeErrorBits / TOTAL_RINGS) * 100;
+      const ringPct = (activeRingBits / TOTAL_RINGS) * 100;
+      errorHistory[sparkIdx] = errPct;
+      sparkIdx = (sparkIdx + 1) % SPARK_LEN;
+
+      renderCanvases();
+      updateTelemetryUI(activeErrorBits, errPct, activeRingBits, ringPct);
+      renderSparkline();
+    }
+
+    /********************************************************************
+     * RENDER 3 PIXELATED 64x64 PANELS & SPARKLINE
+     ********************************************************************/
+    function renderCanvases() {
+      const dW = imgWorld.data;
+      const dR = imgRing.data;
+      const dE = imgError.data;
+
+      for (let idx = 0; idx < PIXELS; idx++) {
+        const base = idx * PLANES;
+        const wVal = currentW[base] + (currentW[base + 1] << 1) + (currentW[base + 2] << 2) + (currentW[base + 3] << 3);
+        const rVal = currentR[base] + (currentR[base + 1] << 1) + (currentR[base + 2] << 2) + (currentR[base + 3] << 3);
+        const eVal = currentE[base] + (currentE[base + 1] << 1) + (currentE[base + 2] << 2) + (currentE[base + 3] << 3);
+
+        const p = idx * 4;
+
+        // Panel 1: World (Cyan-Blue palette)
+        const wNorm = wVal / 15;
+        dW[p]     = Math.floor(8 + wNorm * 56);
+        dW[p + 1] = Math.floor(12 + wNorm * 215);
+        dW[p + 2] = Math.floor(22 + wNorm * 233);
+        dW[p + 3] = 255;
+
+        // Panel 2: Ring Memory (Emerald-Mint palette)
+        const rNorm = rVal / 15;
+        dR[p]     = Math.floor(8 + rNorm * 40);
+        dR[p + 1] = Math.floor(12 + rNorm * 235);
+        dR[p + 2] = Math.floor(18 + rNorm * 160);
+        dR[p + 3] = 255;
+
+        // Panel 3: Surprise / Error (Pitch Black when 0, Neon Pink when firing)
+        if (eVal === 0) {
+          dE[p]     = 7;
+          dE[p + 1] = 9;
+          dE[p + 2] = 14;
+          dE[p + 3] = 255;
+        } else {
+          const eNorm = 0.35 + 0.65 * (eVal / 15);
+          dE[p]     = Math.floor(255 * eNorm);
+          dE[p + 1] = Math.floor(35 * eNorm);
+          dE[p + 2] = Math.floor(155 * eNorm);
+          dE[p + 3] = 255;
+        }
+      }
+
+      ctxWorld.putImageData(imgWorld, 0, 0);
+      ctxRing.putImageData(imgRing, 0, 0);
+      ctxError.putImageData(imgError, 0, 0);
+    }
+
+    function renderSparkline() {
+      const W = canvasSpark.width;
+      const H = canvasSpark.height;
+      ctxSpark.clearRect(0, 0, W, H);
+
+      // Subtle reference grid line
+      ctxSpark.strokeStyle = '#1e293b';
+      ctxSpark.lineWidth = 1;
+      ctxSpark.beginPath();
+      ctxSpark.moveTo(0, H * 0.5);
+      ctxSpark.lineTo(W, H * 0.5);
+      ctxSpark.stroke();
+
+      // Plot error % history
+      ctxSpark.strokeStyle = '#ec4899';
+      ctxSpark.lineWidth = 2;
+      ctxSpark.beginPath();
+      for (let k = 0; k < SPARK_LEN; k++) {
+        const idx = (sparkIdx + k) % SPARK_LEN;
+        const val = errorHistory[idx]; // 0..100%
+        const x = (k / (SPARK_LEN - 1)) * W;
+        const y = H - Math.min(1, val / 35) * (H - 8) - 4;
+        if (k === 0) ctxSpark.moveTo(x, y);
+        else ctxSpark.lineTo(x, y);
+      }
+      ctxSpark.stroke();
+    }
+
+    function updateTelemetryUI(errBits, errPct, ringBits, ringPct) {
+      document.getElementById('kpiErrorPct').textContent = errPct.toFixed(2) + '%';
+      document.getElementById('kpiErrorBits').textContent = `${errBits} / ${TOTAL_RINGS} bits`;
+      document.getElementById('kpiRingPct').textContent = ringPct.toFixed(1) + '%';
+      document.getElementById('kpiRingBits').textContent = `${ringBits} active beats`;
+
+      const lapNum = Math.floor(tickCount / ringPeriod);
+      document.getElementById('kpiLaps').textContent = `Lap ${lapNum}`;
+      document.getElementById('kpiPhase').textContent = `Slot ${ringHead} / ${ringPeriod}`;
+
+      const statusEl = document.getElementById('kpiStatus');
+      const silenceBadge = document.getElementById('silenceBadge');
+
+      if (blindfoldWorld) {
+        statusEl.textContent = 'GHOST REPLAY';
+        statusEl.className = 'text-sm sm:text-base font-bold mono text-amber-300 mt-1';
+        silenceBadge.textContent = 'AUTONOMOUS GHOST';
+        silenceBadge.className = 'text-xs mono text-amber-300 bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-700/40';
+      } else if (errBits === 0) {
+        statusEl.textContent = 'SILENT / LOCKED';
+        statusEl.className = 'text-sm sm:text-base font-bold mono text-emerald-400 mt-1';
+        silenceBadge.textContent = '0 SPIKES (SILENT)';
+        silenceBadge.className = 'text-xs mono text-emerald-300 bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-700/40';
+      } else {
+        statusEl.textContent = 'ADAPTING...';
+        statusEl.className = 'text-sm sm:text-base font-bold mono text-pink-400 mt-1';
+        silenceBadge.textContent = `${errBits} SPIKES`;
+        silenceBadge.className = 'text-xs mono text-pink-300 bg-pink-950/60 px-2.5 py-1 rounded-lg border border-pink-700/40';
+      }
+    }
+
+    /********************************************************************
+     * INTERACTIVE PAINTING ON WORLD CANVAS (MOUSE & TOUCH)
+     ********************************************************************/
+    let isDrawing = false;
+    function paintAtEvent(e) {
+      const rect = canvasWorld.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const gx = Math.floor(((clientX - rect.left) / rect.width) * N);
+      const gy = Math.floor(((clientY - rect.top) / rect.height) * N);
+
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const px = gx + dx;
+          const py = gy + dy;
+          if (px >= 0 && px < N && py >= 0 && py < N) {
+            userPaint[py * N + px] = 15;
+          }
+        }
+      }
+    }
+
+    canvasWorld.addEventListener('mousedown', (e) => { isDrawing = true; paintAtEvent(e); });
+    window.addEventListener('mousemove', (e) => { if (isDrawing) paintAtEvent(e); });
+    window.addEventListener('mouseup', () => { isDrawing = false; });
+
+    canvasWorld.addEventListener('touchstart', (e) => { e.preventDefault(); isDrawing = true; paintAtEvent(e); }, { passive: false });
+    canvasWorld.addEventListener('touchmove', (e) => { e.preventDefault(); if (isDrawing) paintAtEvent(e); }, { passive: false });
+    window.addEventListener('touchend', () => { isDrawing = false; });
+
+    document.getElementById('btnClearPaint').addEventListener('click', () => {
+      userPaint.fill(0);
+    });
+
+    /********************************************************************
+     * UI CONTROLS & EVENT LISTENERS
+     ********************************************************************/
+    // Scene selector buttons
+    document.querySelectorAll('.scene-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const scene = btn.getAttribute('data-scene');
+        if (scene === 'webcam' && !webcamActive) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 128, height: 128 } });
+            webcamVideo.srcObject = stream;
+            webcamActive = true;
+          } catch (err) {
+            // Fallback gracefully if no webcam permission
+            document.getElementById('kpiStatus').textContent = 'NO WEBCAM';
+            return;
+          }
+        }
+        activeScene = scene;
+        document.querySelectorAll('.scene-btn').forEach(b => {
+          b.className = 'scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 transition flex items-center gap-1.5';
+        });
+        btn.className = 'scene-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 transition flex items-center gap-1.5';
+      });
+    });
+
+    // Blindfold World toggle
+    const btnBlindfold = document.getElementById('btnBlindfold');
+    btnBlindfold.addEventListener('click', () => {
+      blindfoldWorld = !blindfoldWorld;
+      document.getElementById('blindfoldOverlay').classList.toggle('hidden', !blindfoldWorld);
+      document.getElementById('blindfoldBadge').classList.toggle('hidden', !blindfoldWorld);
+      btnBlindfold.textContent = `Blindfold World: ${blindfoldWorld ? 'ON' : 'OFF'}`;
+      btnBlindfold.className = blindfoldWorld
+        ? 'px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-amber-500 text-slate-950 border border-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.5)] transition'
+        : 'px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-amber-500/15 text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 transition';
+    });
+
+    // 1-Wire Feedback toggle
+    const btnFeedback = document.getElementById('btnFeedback');
+    btnFeedback.addEventListener('click', () => {
+      feedbackEnabled = !feedbackEnabled;
+      btnFeedback.textContent = `1-Wire Feedback: ${feedbackEnabled ? 'ON' : 'OFF'}`;
+      btnFeedback.className = feedbackEnabled
+        ? 'px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition'
+        : 'px-3.5 py-1.5 rounded-xl text-xs font-bold mono bg-slate-800 text-slate-400 border border-slate-700 transition';
+      document.getElementById('ringModeLabel').textContent = feedbackEnabled
+        ? 'Self-Writing & Self-Erasing'
+        : 'Frozen Shift Register (No Update)';
+    });
+
+    // Wipe Ring Memory
+    document.getElementById('btnWipeRing').addEventListener('click', () => {
+      for (let s = 0; s < MAX_L; s++) ringBuffer[s].fill(0);
+      tickCount = 0;
+      ringHead = 0;
+    });
+
+    // Perturb World (inject flash of random strokes)
+    document.getElementById('btnInjectNoise').addEventListener('click', () => {
+      const cx = Math.floor(Math.random() * 44) + 10;
+      const cy = Math.floor(Math.random() * 44) + 10;
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          if (Math.hypot(x - cx, y - cy) < 8) {
+            userPaint[y * N + x] = 15;
+          }
+        }
+      }
+    });
+
+    // Pause / Resume
+    const btnPause = document.getElementById('btnPause');
+    btnPause.addEventListener('click', () => {
+      isPaused = !isPaused;
+      btnPause.textContent = isPaused ? 'Resume' : 'Pause';
+    });
+
+    // Sliders
+    const sliderPeriod = document.getElementById('sliderPeriod');
+    sliderPeriod.addEventListener('input', () => {
+      ringPeriod = parseInt(sliderPeriod.value, 10);
+      ringHead = ringHead % ringPeriod;
+      const note = (ringPeriod === 16) ? ' (Matches Orbit)' : (ringPeriod === 8 ? ' (Half-Period)' : (ringPeriod === 1 ? ' (Static Filter)' : ' (Mismatch)'));
+      document.getElementById('valPeriod').textContent = `${ringPeriod} ticks${note}`;
+      document.getElementById('ringLenBadge').textContent = `L = ${ringPeriod} Ticks`;
+    });
+
+    const sliderWeight = document.getElementById('sliderWeight');
+    sliderWeight.addEventListener('input', () => {
+      errorWeight = parseFloat(sliderWeight.value);
+      let gateName = 'OFF-BAND';
+      if (errorWeight <= -3.1 && errorWeight >= -7.3) {
+        gateName = (errorWeight <= -3.7) ? 'XOR' : 'OR/XOR Edge';
+      } else if (errorWeight <= -1.6 && errorWeight >= -3.2) {
+        gateName = 'AND';
+      }
+      document.getElementById('valWeight').textContent = `w = ${errorWeight.toFixed(2)} (${gateName})`;
+      document.getElementById('kpiGateMode').textContent = `Gate: ${gateName} (${errorWeight.toFixed(2)})`;
+      const singleDrive = (errorWeight * WIRE_VAL).toFixed(1);
+      document.getElementById('errorEquationLabel').textContent = `drive = ${singleDrive}·W + ${singleDrive}·R`;
+    });
+
+    const sliderJitter = document.getElementById('sliderJitter');
+    sliderJitter.addEventListener('input', () => {
+      timingJitter = parseInt(sliderJitter.value, 10);
+      document.getElementById('valJitter').textContent = timingJitter === 0
+        ? '0 ticks (Clean Clock)'
+        : `±${timingJitter} tick${timingJitter > 1 ? 's' : ''} (Noisy Phase)`;
+    });
+
+    const sliderHold = document.getElementById('sliderHold');
+    sliderHold.addEventListener('input', () => {
+      synapticHold = parseInt(sliderHold.value, 10);
+      document.getElementById('valHold').textContent = synapticHold === 0
+        ? '0 ticks (Bare Window)'
+        : `${synapticHold} tick${synapticHold > 1 ? 's' : ''} (Smears Jitter)`;
+    });
+
+    // Main loop at ~30 ticks/sec so 16-tick orbit takes ~0.53s per lap
+    window.onload = function () {
+      setInterval(() => {
+        if (!isPaused) {
+          stepSimulation();
+        }
+      }, 33);
+    };
+  </script>
+</body>
+</html>
